@@ -26,56 +26,52 @@
 package com.wren.yamashoebop;
 
 import com.google.inject.Provides;
-import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.util.concurrent.ScheduledExecutorService;
 import javax.inject.Inject;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
-import javax.sound.sampled.FloatControl;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.UnsupportedAudioFileException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import net.runelite.api.Client;
 import net.runelite.api.Player;
-import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.AreaSoundEffectPlayed;
-import net.runelite.api.events.GameTick;
 import net.runelite.api.events.SoundEffectPlayed;
+import net.runelite.client.audio.AudioPlayer;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @PluginDescriptor(
-	name = "Yama Shoebop",
-	description = "Plays a short audio clip when casting the Leagues VI home teleport, and mutes the in-game teleport sound while it plays.",
-	tags = {"leagues", "teleport", "sound", "audio", "demonic", "pacts"}
+		name = "Yama Shoebop",
+		description = "Plays a short audio clip when casting the Leagues VI home teleport, and mutes the in-game teleport sound while it plays.",
+		tags = {"leagues", "teleport", "sound", "audio", "demonic", "pacts"}
 )
 public class YamaShoebopPlugin extends Plugin
 {
 	private static final Logger log = LoggerFactory.getLogger(YamaShoebopPlugin.class);
+
 	// Animation ID captured in-game for the League Home Teleport (Demonic Pacts).
 	private static final int LEAGUE_HOME_TELEPORT_ANIM = 13764;
 
 	private static final String AUDIO_RESOURCE = "/com/wren/yamashoebop/shoebop.wav";
-	private static final long MUTE_WINDOW_MS = 4000L;
-	private static final float VOLUME_LINEAR = 0.8f;
+
+	// Cast is ~12 seconds; window covers the full duration plus a small buffer
+	// so the trailing teleport SFX is also suppressed.
+	private static final long MUTE_WINDOW_MS = 13_000L;
+
+	// Gain in dB. -2 dB is roughly equivalent to 80% linear volume.
+	private static final float GAIN_DB = -2f;
+
 	private static final int NO_ANIMATION = -1;
 
 	@Inject private Client client;
 	@Inject private YamaShoebopConfig config;
-	@Inject private ScheduledExecutorService executor;
+	@Inject private AudioPlayer audioPlayer;
 
-	private Clip activeClip;
 	private int lastSeenAnimation = NO_ANIMATION;
 	private long muteWindowEndsAtMillis = 0L;
-	private WorldPoint lastTickLocation;
 
 	@Provides
 	YamaShoebopConfig provideConfig(ConfigManager cm)
@@ -86,13 +82,9 @@ public class YamaShoebopPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
-		stopClip();
 		muteWindowEndsAtMillis = 0L;
-		lastTickLocation = null;
 		lastSeenAnimation = NO_ANIMATION;
 	}
-
-	// --------- Detection ---------
 
 	@Subscribe
 	public void onAnimationChanged(AnimationChanged event)
@@ -121,32 +113,6 @@ public class YamaShoebopPlugin extends Plugin
 		}
 	}
 
-	// --------- Stop on movement ---------
-
-	@Subscribe
-	public void onGameTick(GameTick event)
-	{
-		Player local = client.getLocalPlayer();
-		if (local == null)
-		{
-			lastTickLocation = null;
-			return;
-		}
-
-		WorldPoint current = local.getWorldLocation();
-
-		if (activeClip != null && activeClip.isRunning()
-			&& lastTickLocation != null && !lastTickLocation.equals(current))
-		{
-			stopClip();
-			muteWindowEndsAtMillis = 0L;
-		}
-
-		lastTickLocation = current;
-	}
-
-	// --------- Mute the in-game teleport sound while our clip is playing ---------
-
 	@Subscribe
 	public void onSoundEffectPlayed(SoundEffectPlayed event)
 	{
@@ -161,51 +127,21 @@ public class YamaShoebopPlugin extends Plugin
 	{
 		Player local = client.getLocalPlayer();
 		if (config.enabled()
-			&& local != null
-			&& event.getSource() == local
-			&& System.currentTimeMillis() < muteWindowEndsAtMillis)
+				&& local != null
+				&& event.getSource() == local
+				&& System.currentTimeMillis() < muteWindowEndsAtMillis)
 		{
 			event.consume();
 		}
 	}
 
-	// --------- Audio playback ---------
-
 	private void triggerShoebop()
 	{
 		muteWindowEndsAtMillis = System.currentTimeMillis() + MUTE_WINDOW_MS;
-		executor.execute(this::playEmbeddedClip);
-	}
 
-	private void playEmbeddedClip()
-	{
-		stopClip();
-
-		try (InputStream raw = YamaShoebopPlugin.class.getResourceAsStream(AUDIO_RESOURCE))
+		try
 		{
-			if (raw == null)
-			{
-				log.warn("Bundled audio resource not found: {}", AUDIO_RESOURCE);
-				return;
-			}
-
-			try (BufferedInputStream buffered = new BufferedInputStream(raw);
-				AudioInputStream in = AudioSystem.getAudioInputStream(buffered))
-			{
-				Clip clip = AudioSystem.getClip();
-				clip.open(in);
-
-				if (clip.isControlSupported(FloatControl.Type.MASTER_GAIN))
-				{
-					FloatControl gain = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
-					float v = Math.max(0f, Math.min(1f, VOLUME_LINEAR));
-					float dB = v <= 0.0001f ? -60f : (float) (20.0 * Math.log10(v));
-					gain.setValue(Math.max(gain.getMinimum(), Math.min(gain.getMaximum(), dB)));
-				}
-
-				activeClip = clip;
-				clip.start();
-			}
+			audioPlayer.play(YamaShoebopPlugin.class, AUDIO_RESOURCE, GAIN_DB);
 		}
 		catch (UnsupportedAudioFileException e)
 		{
@@ -214,25 +150,6 @@ public class YamaShoebopPlugin extends Plugin
 		catch (LineUnavailableException | IOException e)
 		{
 			log.warn("Failed to play Yama Shoebop clip", e);
-		}
-	}
-
-	private void stopClip()
-	{
-		if (activeClip != null)
-		{
-			try
-			{
-				if (activeClip.isRunning())
-				{
-					activeClip.stop();
-				}
-				activeClip.close();
-			}
-			catch (Exception ignored)
-			{
-			}
-			activeClip = null;
 		}
 	}
 }
