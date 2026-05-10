@@ -6,7 +6,7 @@ A small RuneLite plugin for the Demonic Pacts League (Leagues VI). When you cast
 
 - Listens for the local player's animation. When it matches the League Home Teleport animation ID (`13764`), the plugin starts the bundled audio clip on the RuneLite shared executor.
 - During a short window after the trigger, both `SoundEffectPlayed` and self-`AreaSoundEffectPlayed` events are consumed so the in-game teleport sound is silenced while the clip plays.
-- If the player moves to a new tile while the clip is playing (e.g. the teleport completes, or you walk away), the clip stops immediately and the mute window is cleared.
+-If player cancels teleport .wav plays till completion
 
 ## Configuration
 
