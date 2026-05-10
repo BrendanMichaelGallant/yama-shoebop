@@ -37,7 +37,8 @@ import javax.sound.sampled.Clip;
 import javax.sound.sampled.FloatControl;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.UnsupportedAudioFileException;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import net.runelite.api.Client;
 import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
@@ -50,7 +51,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
-@Slf4j
+
 @PluginDescriptor(
 	name = "Yama Shoebop",
 	description = "Plays a short audio clip when casting the Leagues VI home teleport, and mutes the in-game teleport sound while it plays.",
@@ -58,6 +59,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 )
 public class YamaShoebopPlugin extends Plugin
 {
+	private static final Logger log = LoggerFactory.getLogger(YamaShoebopPlugin.class);
 	// Animation ID captured in-game for the League Home Teleport (Demonic Pacts).
 	private static final int LEAGUE_HOME_TELEPORT_ANIM = 13764;
 
