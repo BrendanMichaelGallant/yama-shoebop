@@ -26,10 +26,7 @@
 package com.wren.yamashoebop;
 
 import com.google.inject.Provides;
-import java.io.IOException;
 import javax.inject.Inject;
-import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.UnsupportedAudioFileException;
 import net.runelite.api.Client;
 import net.runelite.api.Player;
 import net.runelite.api.events.AnimationChanged;
@@ -143,11 +140,7 @@ public class YamaShoebopPlugin extends Plugin
 		{
 			audioPlayer.play(YamaShoebopPlugin.class, AUDIO_RESOURCE, GAIN_DB);
 		}
-		catch (UnsupportedAudioFileException e)
-		{
-			log.warn("Bundled audio is not a supported PCM WAV format", e);
-		}
-		catch (LineUnavailableException | IOException e)
+		catch (Exception e)
 		{
 			log.warn("Failed to play Yama Shoebop clip", e);
 		}
